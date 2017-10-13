@@ -22,7 +22,7 @@ if Code.ensure_loaded?(ConfigParser) do
 
     def strip_key_prefix(credentials) do
       credentials
-      |> Map.take(~w(aws_access_key_id aws_secret_access_key aws_session_token region))
+      |> Map.take(~w(aws_access_key_id aws_secret_access_key aws_session_token region source_profile role_arn))
       |> Map.new(fn({key, val}) ->
         updated_key =
           key
