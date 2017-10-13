@@ -22,12 +22,12 @@ defmodule ExAws.Config do
   3) Keys set on the individual service e.g `config :ex_aws, :s3` are merged in
   4) Finally, any configuration overrides are merged in
   """
-  def new(service, opts \\ []) do
+  def new(service, opts \\ [], retrieve_awscli \\ true) do
     overrides = Map.new(opts)
 
-    service
+    config = service
     |> build_base(overrides)
-    |> retrieve_runtime_config
+    |> retrieve_runtime_config(retrieve_awscli)
     |> parse_host_for_region
   end
 
@@ -42,42 +42,43 @@ defmodule ExAws.Config do
     |> Map.merge(overrides)
   end
 
-  def retrieve_runtime_config(config) do
+  def retrieve_runtime_config(config, retrieve_awscli) do
     Enum.reduce(config, config, fn
       {:host, host}, config ->
-        Map.put(config, :host, retrieve_runtime_value(host, config))
+        Map.put(config, :host, retrieve_runtime_value(host, config, false))
       {:retries, retries}, config ->
         Map.put(config, :retries, retries)
       {:http_opts, http_opts}, config ->
         Map.put(config, :http_opts, http_opts)
       {k, v}, config ->
-        case retrieve_runtime_value(v, config) do
+        case retrieve_runtime_value(v, config, retrieve_awscli) do
           %{} = result -> Map.merge(config, result)
           value -> Map.put(config, k, value)
         end
     end)
   end
 
-  def retrieve_runtime_value({:system, env_key}, _) do
+  def retrieve_runtime_value({:system, env_key}, _, _) do
     System.get_env(env_key)
   end
-  def retrieve_runtime_value(:instance_role, config) do
+  def retrieve_runtime_value(:instance_role, config, retrieve_awscli) do
     config
     |> ExAws.Config.AuthCache.get
     |> Map.take([:access_key_id, :secret_access_key, :security_token])
     |> valid_map_or_nil
   end
-  def retrieve_runtime_value({:awscli, profile, expiration}, _) do
-    ExAws.Config.AuthCache.get(profile, expiration * 1000)
+  def retrieve_runtime_value({:awscli, profile, expiration}, _, retrieve_awscli) do
+    ExAws.Config.AuthCache.get(profile, expiration * 1000, retrieve_awscli)
     |> Map.take([:access_key_id, :secret_access_key, :region, :security_token])
     |> valid_map_or_nil
   end
-  def retrieve_runtime_value(values, config) when is_list(values) do
+
+  def retrieve_runtime_value(values, config, retrieve_awscli) when is_list(values) do
     values
-    |> Stream.map(&retrieve_runtime_value(&1, config))
+    |> Stream.map(&retrieve_runtime_value(&1, config, retrieve_awscli))
     |> Enum.find(&(&1))
   end
-  def retrieve_runtime_value(value, _), do: value
+  def retrieve_runtime_value(value, _, _), do: value
 
   def parse_host_for_region(%{host: {stub, host}, region: region} = config) do
     Map.put(config, :host, String.replace(host, stub, region))
