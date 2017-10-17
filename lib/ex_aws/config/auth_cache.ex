@@ -57,9 +57,11 @@ defmodule ExAws.Config.AuthCache do
       auth -> :ets.insert(ets, auth)
     end
 
+    duration = credential_duration_seconds(expiration)
+
     auth = if auth.role_arn do
       {:ok, result} = auth.role_arn
-      |> ExAws.STS.assume_role("default_session")
+      |> ExAws.STS.assume_role("default_session", duration: duration)
       |> ExAws.Operation.perform(ExAws.Config.new(:sts))
 
       assumed_auth = %{
@@ -77,6 +79,15 @@ defmodule ExAws.Config.AuthCache do
 
     Process.send_after(self(), {:refresh_awscli_config, profile, expiration}, expiration)
     auth
+  end
+
+  defp credential_duration_seconds(expiration_ms) do
+    # assume_role accepts a duration between 900 and 3600 seconds
+    # We're adding a buffer to make sure the credentials live longer than
+    # the refresh interval.
+    {min, max, buffer} = {900, 3600, 5}
+    seconds = div(expiration_ms, 1000) + buffer
+    Enum.max([ Enum.min([max, seconds]), min ])
   end
 
   def refresh_config(config, ets) do
