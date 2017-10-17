@@ -57,12 +57,18 @@ defmodule ExAws.Config.AuthCache do
       auth -> :ets.insert(ets, auth)
     end
 
-    duration = credential_duration_seconds(expiration)
+    assume_role_options = [
+      duration: credential_duration_seconds(expiration),
+      external_id: auth.external_id,
+    ]
+    role_session_name = auth.role_session_name || "default_session"
 
     auth = if auth.role_arn do
       {:ok, result} = auth.role_arn
-      |> ExAws.STS.assume_role("default_session", duration: duration)
+      |> ExAws.STS.assume_role(role_session_name, assume_role_options)
       |> ExAws.Operation.perform(ExAws.Config.new(:sts))
+
+      IO.inspect auth
 
       assumed_auth = %{
         access_key_id: result.body.access_key_id,
